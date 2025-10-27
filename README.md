@@ -1,0 +1,192 @@
+[stetsura.html](https://github.com/user-attachments/files/23165819/stetsura.html)
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Німеччина — розповідь і звукова доріжка</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: linear-gradient(180deg, #000 33%, #dd0000 33%, #dd0000 66%, #ffce00 66%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      transition: filter 0.8s ease;
+    }
+    body.playing { animation: pulse 3s infinite alternate; }
+    @keyframes pulse { 0% { filter: brightness(1); } 100% { filter: brightness(1.3); } }
+
+    .card {
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 18px;
+      padding: 26px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      max-width: 720px;
+      margin: 20px;
+      position: relative;
+      z-index: 2;
+    }
+    h1 { font-size: 1.7rem; text-align: center; margin-bottom: 0.3rem; }
+
+    .controls {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+    button {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(90deg, #dd0000, #ffce00);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transition: transform 0.1s, box-shadow 0.2s;
+    }
+    button:hover { box-shadow: 0 6px 12px rgba(0,0,0,0.3); }
+    button:active { transform: translateY(1px); }
+    small { color: #333; }
+
+    .note {
+      position: absolute;
+      font-size: 28px;
+      color: white;
+      opacity: 0.9;
+      animation: floatUp 3s linear forwards;
+      z-index: 1;
+      pointer-events: none;
+    }
+    @keyframes floatUp {
+      from { transform: translateY(40vh) scale(0.8); opacity: 1; }
+      to { transform: translateY(-60vh) scale(1.2); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Німеччина</h1>
+    <p>
+      Німеччина — держава в центральній Європі, відома своєю багатою історією, культурою і технічними досягненнями. 
+      Це країна з розвиненою промисловістю, високими стандартами освіти й охорони здоров'я. 
+      Великі міста, такі як Берлін, Мюнхен і Гамбург, поєднують історичну архітектуру з сучасною інфраструктурою.
+      Німеччина також славиться своїми фестивалями, традиційною кухнею та мальовничими ландшафтами — від Рейну до Баварських Альп.
+    </p>
+    <p><strong>Факт:</strong> офіційна мова — німецька; у країні багато музеїв, університетів і наукових центрів.</p>
+
+    <div class="controls">
+      <button id="playBtn">🎵 Грати мелодію</button>
+      <button id="stopBtn">⏹ Зупинити</button>
+      <small id="status">Готово</small>
+    </div>
+    <p style="margin-top:12px;text-align:center"><em>Порада:</em> прокрутіть колесо миші, щоб змінити гучність.</p>
+  </div>
+
+  <script>
+    let ctx = null;
+    let masterGain = null;
+    let isPlaying = false;
+    let scheduled = [];
+
+    const notes = {
+      'C4': 261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,'A4':440.00,'B4':493.88,'C5':523.25
+    };
+
+    const melody = [
+      ['E4',0.28], ['D4',0.28], ['C4',0.42],
+      ['D4',0.28], ['E4',0.28], ['E4',0.56],
+      ['D4',0.28], ['D4',0.56],
+      ['E4',0.28], ['G4',0.28], ['G4',0.56]
+    ];
+
+    function playMelody(){
+      if(isPlaying) return;
+
+      // створюємо контекст тільки після кліку (щоб браузер не блокував)
+      if(!ctx){
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = ctx.createGain();
+        masterGain.gain.value = 0.12;
+        masterGain.connect(ctx.destination);
+      }
+      if(ctx.state === "suspended") ctx.resume();
+
+      const start = ctx.currentTime + 0.05;
+      let t = start;
+      scheduled = [];
+
+      document.body.classList.add('playing');
+      const totalDuration = melody.reduce((s, m) => s + m[1], 0);
+
+      melody.forEach(([n,d]) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = notes[n] || 440;
+
+        const attack = 0.01, release = 0.05;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(1, t + attack);
+        g.gain.setValueAtTime(1, t + d - release);
+        g.gain.linearRampToValueAtTime(0, t + d + 0.001);
+
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(t);
+        osc.stop(t + d + 0.02);
+
+        scheduled.push({osc, g});
+        t += d;
+
+        setTimeout(()=>spawnNote(), (t-start)*1000);
+      });
+
+      isPlaying = true;
+      document.getElementById('status').textContent = 'Мелодія відтворюється';
+
+      setTimeout(() => {
+        isPlaying = false;
+        document.body.classList.remove('playing');
+        document.getElementById('status').textContent = 'Готово';
+      }, (totalDuration + 0.2)*1000);
+    }
+
+    function spawnNote(){
+      const el = document.createElement('div');
+      el.textContent = ['♪','♩','♫','♬'][Math.floor(Math.random()*4)];
+      el.className = 'note';
+      el.style.left = Math.random()*90 + 'vw';
+      document.body.appendChild(el);
+      setTimeout(()=>el.remove(), 3000);
+    }
+
+    function stopMelody(){
+      if(!ctx) return;
+      scheduled.forEach(item => { try{ item.osc.stop(); } catch(e){} });
+      scheduled = [];
+      isPlaying = false;
+      document.body.classList.remove('playing');
+      document.getElementById('status').textContent = 'Зупинено';
+    }
+
+    document.getElementById('playBtn').addEventListener('click', playMelody);
+    document.getElementById('stopBtn').addEventListener('click', stopMelody);
+
+    document.querySelector('.controls').addEventListener('wheel', (e)=>{
+      if(!ctx) return;
+      const delta = -e.deltaY/1000;
+      masterGain.gain.value = Math.min(0.6, Math.max(0, masterGain.gain.value + delta));
+      document.getElementById('status').textContent = 'Гучність: ' + Math.round(masterGain.gain.value*100) + '%';
+      setTimeout(()=>{ if(!isPlaying) document.getElementById('status').textContent = 'Готово'; }, 900);
+      e.preventDefault();
+    });
+  </script>
+</body>
+</html>
